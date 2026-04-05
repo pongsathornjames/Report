@@ -195,6 +195,8 @@ const CHANNELS=[
   {id:"telesale",label:"Telesale",color:"#c084fc",bg:"#0f0820"},
   {id:"shopee",  label:"Shopee",  color:"#fb923c",bg:"#140900"},
   {id:"jemuay",  label:"Jemuay",  color:"#f472b6",bg:"#150510"},
+  {id:"clinic",  label:"คลินิก",  color:"#38bdf8",bg:"#021020"},
+  {id:"marketing",label:"ค่าการตลาด",color:"#a3e635",bg:"#061200"},
 ];
 const PERIODS=["1-7","8-14","15-21","22-28","29-31"];
 
@@ -228,6 +230,8 @@ const PRODUCTS={
     {name:"แปรง V-shap",cost:25.57},{name:"แปรง ขนนุ่ม",cost:12.73},
     {name:"50g 2",cost:64},{name:"DH2/50g2",cost:121.18},{name:"50g 1",cost:31.62},
     {name:"50g 3",cost:94.86},{name:"50/2 + v2",cost:76},{name:"DH",cost:28.59}],
+  clinic:[{name:"สินค้า/บริการ 1",cost:0}],
+  marketing:[{name:"รายการ 1",cost:0}],
 };
 
 // ── MONTHS ───────────────────────────────────────────────────────────────────
@@ -250,9 +254,10 @@ let activeCh="tiktok",activePeriod="1-7",prodOpen={};
 function mkPeriod(chId){
   return {revenue:"",cancel:"",returnAmt:"",platformFee:"",influencerWage:"",influencerComm:"",
     adsNormal:"",adsLive:"",packing:"",deliveredOrders:"",shipping:"",
-    shopCard:"",live:"",companyAcc:"",partTime:"",affAcc:"",vdoCompany:"",vdoAff:"",
+    shopCard:"",live:"",companyAcc:"",partTime:"",affAcc:"",vdoCompany:"",vdoAf:"",
     may_calls:"",may_closes:"",gig_calls:"",gig_closes:"",
     farm_calls:"",farm_closes:"",zac_calls:"",zac_closes:"",
+    marketingFee:"",branch1:"",branch2:"",branch3:"",branch4:"",
     products:PRODUCTS[chId].map(p=>({name:p.name,cost:p.cost,qty:""}))};
 }
 function mkInitial(){
@@ -366,6 +371,21 @@ function calcPeriod(chId,d){
     const exp=gp+ic+ads+packing+cogs;
     const net=rac-exp;
     return{rac,cogs,exp,net,gp,base:rac};
+  }
+  if(chId==="clinic"){
+    // คลินิก สั่ง: รายได้จากสาขา, หักค่าใช้จ่ายต่างๆ
+    const ship=n(d.shipping),ic=n(d.influencerComm),ads=n(d.adsNormal),mktg=n(d.marketingFee);
+    const exp=ship+ic+ads+mktg+packing+cogs;
+    const net=rac-exp;
+    return{rac,cogs,exp,net,base:rac};
+  }
+  if(chId==="marketing"){
+    // ค่าการตลาด: branch1-4 เป็นแค่ข้อมูลสัดส่วนรายได้ ไม่ใช่ค่าใช้จ่าย
+    const branch1=n(d.branch1),branch2=n(d.branch2),branch3=n(d.branch3),branch4=n(d.branch4);
+    const ic=n(d.influencerComm),ads=n(d.adsNormal);
+    const exp=ic+ads+cogs;
+    const net=rev-exp;
+    return{rac,cogs,exp,net,branch1,branch2,branch3,branch4,base:rev};
   }
   return{rac,cogs,exp:0,net:0,base:rev};
 }
@@ -595,6 +615,79 @@ function buildForm(chId){
       </div>
       <div class="perc-bar" id="perc-bar">—</div>
     `)}`;
+  if(chId==="clinic") return `
+    ${section("💰 รายได้ (คลินิก สั่ง)","#38bdf8",`
+      <div class="grid3">
+        ${field("revenue","รายได้ทั้งหมด (ยังไม่หักอะไร)","","positive")}
+        ${field("cancel","ยอดยกเลิก")}
+        ${field("returnAmt","ยอดตีกลับ")}
+      </div>
+      <div style="margin-top:10px">${calcCard("rac","รายได้หักยกเลิก","#38bdf8")}</div>
+    `)}
+    ${section("📊 ค่าใช้จ่าย","#7dd3fc",`
+      <div class="grid3">
+        ${field("shipping","ค่าส่ง (กรอกเอง)")}
+        ${field("influencerComm","ค่าคอม Influencer")}
+        ${field("adsNormal","ค่า Ads")}
+        ${field("marketingFee","ค่าการตลาดอื่นๆ")}
+        ${field("packing","ค่าแพค")}
+        ${field("deliveredOrders","ออเดอร์ (จัดส่งจริง)","","positive")}
+      </div>
+    `)}
+    ${section("📋 ข้อมูลรายได้แยกสาขา","#bae6fd",`
+      <div style="font-size:11px;color:var(--text2);font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:1px">สัดส่วนรายได้ตามแหล่งที่มา</div>
+      <div class="grid3">
+        ${field("shopCard","หน้าร้านค้า (การ์ดสินค้า)","","positive")}
+        ${field("live","รายได้จาก Live","","positive")}
+        ${field("companyAcc","บัญชีบริษัท","","positive")}
+        ${field("partTime","Part-time","","positive")}
+        ${field("affAcc","บัญชี Aff","","positive")}
+        ${field("vdoCompany","VDO บัญชีบริษัท","","positive")}
+      </div>
+    `)}
+    ${section("📈 สรุปผลการคำนวณ","var(--green)",`
+      <div class="grid3">
+        ${calcCard("cogs","ต้นทุนสินค้า (COGS)","var(--yellow)")}
+        ${calcCard("exp","รวมค่าใช้จ่าย","var(--yellow)")}
+        ${calcCard("net","รายได้สุทธิ","var(--green)")}
+      </div>
+      <div class="perc-bar" id="perc-bar">—</div>
+    `)}`;
+
+  if(chId==="marketing") return `
+    ${section("💰 รายได้รวม (ค่าการตลาด)","#a3e635",`
+      <div class="grid2">
+        ${field("revenue","รายได้รวมทุกสาขา","","positive")}
+        ${field("deliveredOrders","ออเดอร์รวม (จัดส่งจริง)","","positive")}
+      </div>
+    `)}
+    ${section("📍 สัดส่วนรายได้แยกสาขา","#bef264",`
+      <div style="font-size:11px;color:var(--text2);margin-bottom:12px;line-height:1.6">
+        กรอกยอดรายได้ที่มาจากแต่ละสาขา — ใช้ดูสัดส่วนเท่านั้น ไม่นำไปคำนวณ
+      </div>
+      <div class="grid4">
+        ${field("branch1","เชฟวัน","","positive")}
+        ${field("branch2","สวายเรียง","","positive")}
+        ${field("branch3","ประทาย","","positive")}
+        ${field("branch4","พยัค","","positive")}
+      </div>
+    `)}
+    ${section("📊 ค่าใช้จ่ายอื่นๆ","#d9f99d",`
+      <div class="grid3">
+        ${field("influencerComm","ค่าคอม Influencer")}
+        ${field("adsNormal","ค่า Ads")}
+        ${field("packing","ค่าแพค")}
+      </div>
+    `)}
+    ${section("📈 สรุปผลการคำนวณ","var(--green)",`
+      <div class="grid3">
+        ${calcCard("cogs","ต้นทุนสินค้า (COGS)","var(--yellow)")}
+        ${calcCard("exp","รวมค่าใช้จ่ายทั้งหมด","var(--yellow)")}
+        ${calcCard("net","รายได้สุทธิ","var(--green)")}
+      </div>
+      <div class="perc-bar" id="perc-bar">—</div>
+    `)}`;
+
   return "";
 }
 
@@ -793,7 +886,8 @@ function render(){
   const fields=["revenue","cancel","returnAmt","platformFee","influencerWage","influencerComm",
     "adsNormal","adsLive","packing","deliveredOrders","shipping",
     "shopCard","live","companyAcc","partTime","affAcc","vdoCompany","vdoAff",
-    "may_calls","may_closes","gig_calls","gig_closes","farm_calls","farm_closes","zac_calls","zac_closes"];
+    "may_calls","may_closes","gig_calls","gig_closes","farm_calls","farm_closes","zac_calls","zac_closes",
+    "marketingFee","branch1","branch2","branch3","branch4"];
   fields.forEach(f=>{
     const el=document.getElementById("f_"+f);
     if(el){el.value=d[f]||"";el.addEventListener("input",e=>{d[f]=e.target.value;updateCalcs();updatePeriodTabNet(activePeriod);});}
@@ -820,6 +914,20 @@ function updateCalcs(){
   if(c.gp!==undefined)setV("gp",c.gp);
   if(c.callerC!==undefined)setV("callerC",c.callerC);
   if(c.totalC!==undefined)setV("totalC",c.totalC);
+  // marketing channel — branches are revenue info only, show % of total revenue
+  if(activeCh==="marketing"){
+    const totalRev=n(d.revenue);
+    ["branch1","branch2","branch3","branch4"].forEach(k=>{
+      if(document.getElementById("ph_"+k)) setPctBadge(k,n(d[k]),totalRev,"positive");
+    });
+  }
+  // clinic extra field badges
+  if(activeCh==="clinic"){
+    if(document.getElementById("ph_marketingFee")) setPctBadge("marketingFee",n(d.marketingFee),base,"expense");
+    ["shopCard","live","companyAcc","partTime","affAcc","vdoCompany"].forEach(k=>{
+      if(document.getElementById("ph_"+k)) setPctBadge(k,n(d[k]),n(d.revenue),"positive");
+    });
+  }
 
   // % badges for each input field
   const rev=n(d.revenue),rac=c.rac;
@@ -879,6 +987,13 @@ function updateCalcs(){
     if(activeCh==="shopee")items.push(`Platform: <span>19.27%</span>`);
     if(activeCh==="jemuay")items.push(`GP 40%: <span>40%</span>`);
     if(activeCh==="telesale"){items.push(`Comm 18%: <span>${pctStr(c.callerC,base)}</span>`);items.push(`Comm 5%: <span>${pctStr(c.totalC,base)}</span>`);}
+    if(activeCh==="marketing"&&(c.branch1||c.branch2||c.branch3||c.branch4)){
+      const rv=n(d.revenue);
+      items.push(`เชฟวัน: <span>${pctStr(c.branch1,rv)}</span>`);
+      items.push(`สวายเรียง: <span>${pctStr(c.branch2,rv)}</span>`);
+      items.push(`ประทาย: <span>${pctStr(c.branch3,rv)}</span>`);
+      items.push(`พยัค: <span>${pctStr(c.branch4,rv)}</span>`);
+    }
     items.push(`COGS: <span>${pctStr(c.cogs,base)}</span>`);
     items.push(`Net: <span class="${n(c.net)>=0?"net-pos":"net-neg"}">${pctStr(c.net,base)}</span>`);
     pb.innerHTML=items.join(" &nbsp;|&nbsp; ");
