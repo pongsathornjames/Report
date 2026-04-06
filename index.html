@@ -1051,25 +1051,26 @@ function downloadReport(){
       const d=DATA[ch.id][p];
       if(!n(d.revenue))return;
       const c=calcPeriod(ch.id,d);
-      const base=c.base||0;
       chRev+=n(d.revenue);chNet+=(c.net||0);chOrders+=n(d.deliveredOrders);
       chExp+=(c.exp||0);chCogs+=c.cogs;
-      periodRows.push({p,d,c,base});
+      periodRows.push({p,d,c});
     });
     if(chRev>0)rows.push({ch,chRev,chNet,chOrders,chExp,chCogs,periodRows});
   });
 
   const fmtB=v=>n(v).toLocaleString("th-TH",{minimumFractionDigits:0,maximumFractionDigits:0});
+  const fmtBF=v=>n(v).toLocaleString("th-TH",{minimumFractionDigits:2,maximumFractionDigits:2});
   const pR=(v,b)=>b>0?((n(v)/b)*100).toFixed(1)+"%":"—";
   const neg=v=>n(v)<0;
 
-  const chColors={tiktok:"#ff3b6b",facebook:"#4da8ff",line:"#2ddb8a",agent:"#f5c842",telesale:"#c084fc",shopee:"#fb923c",jemuay:"#f472b6"};
+  const chColors={tiktok:"#ff3b6b",facebook:"#4da8ff",line:"#2ddb8a",agent:"#f5c842",
+    telesale:"#c084fc",shopee:"#fb923c",jemuay:"#f472b6",clinic:"#38bdf8",marketing:"#a3e635"};
 
   const totalRev=rows.reduce((s,r)=>s+r.chRev,0);
   const totalNet=rows.reduce((s,r)=>s+r.chNet,0);
   const totalOrders=rows.reduce((s,r)=>s+r.chOrders,0);
 
-  // Build per-channel detail tables
+  // ── PAGE 1: Summary ────────────────────────────────────────────────────────
   const detailSections=rows.map(({ch,chRev,chNet,chOrders,chExp,chCogs,periodRows})=>`
     <div class="ch-section">
       <div class="ch-header" style="border-left:5px solid ${chColors[ch.id]}">
@@ -1108,7 +1109,322 @@ function downloadReport(){
       </table>`:"<p class='no-data'>ยังไม่มีข้อมูล</p>"}
     </div>`).join("");
 
-  // Donut chart data
+  const monthName=MONTHS[activeMonth-1].full+" "+YEAR;
+
+  // ── PAGE 2+: Per-channel detail pages ──────────────────────────────────────
+  let allBarChartScripts="";
+
+  function chHeaders(id){
+    if(id==="tiktok")      return ["ช่วงวันที่","รายได้","ยกเลิก","ตีกลับ","Platform","Inf. Wage","Inf. Comm","Ads ปกติ","Ads Live","แพค","COGS","สุทธิ","ออเดอร์"];
+    if(id==="facebook"||id==="line") return ["ช่วงวันที่","รายได้","ออเดอร์","ค่าส่ง (auto)","Inf. Comm","Ads","แพค","COGS","สุทธิ"];
+    if(id==="agent")       return ["ช่วงวันที่","รายได้","ยกเลิก","ค่าส่ง","Inf. Comm","Ads","แพค","COGS","สุทธิ","ออเดอร์"];
+    if(id==="telesale")    return ["ช่วงวันที่","รายได้","ออเดอร์","ค่าส่ง (auto)","Comm 18%","Comm 5%","แพค","COGS","สุทธิ"];
+    if(id==="shopee")      return ["ช่วงวันที่","รายได้","ยกเลิก","Platform 19.27%","Inf. Comm","Ads","แพค","COGS","สุทธิ","ออเดอร์"];
+    if(id==="jemuay")      return ["ช่วงวันที่","รายได้","ยกเลิก","GP 40%","Inf. Comm","Ads","แพค","COGS","สุทธิ","ออเดอร์"];
+    if(id==="clinic")      return ["ช่วงวันที่","รายได้","ยกเลิก","ตีกลับ","ค่าส่ง","Inf. Comm","Ads","การตลาด","แพค","COGS","สุทธิ","ออเดอร์"];
+    if(id==="marketing")   return ["ช่วงวันที่","รายได้","ออเดอร์","เชฟวัน","สวายเรียง","ประทาย","พยัค","Inf. Comm","Ads","แพค","COGS","สุทธิ"];
+    return ["ช่วงวันที่","รายได้","COGS","ค่าใช้จ่าย","สุทธิ"];
+  }
+
+  function chCells(id,p,d,c){
+    const N=v=>`<td class="num-col">${v!==undefined&&v!==null&&(v>0||v<0)?fmtB(v):"—"}</td>`;
+    const NC=(v,cls)=>`<td class="num-col ${cls||""}">${v!==undefined?fmtB(v):"—"}</td>`;
+    const per=`<td class="period-col">${p}</td>`;
+    const ord=`<td class="num-col">${n(d.deliveredOrders)||"—"}</td>`;
+    if(id==="tiktok")    return per+N(n(d.revenue))+N(n(d.cancel))+N(n(d.returnAmt))+N(n(d.platformFee))+N(n(d.influencerWage))+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.adsLive))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos")+ord;
+    if(id==="facebook"||id==="line") return per+N(n(d.revenue))+ord+N(c.ship||0)+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos");
+    if(id==="agent")     return per+N(n(d.revenue))+N(n(d.cancel))+N(n(d.shipping))+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos")+ord;
+    if(id==="telesale")  return per+N(n(d.revenue))+ord+N(c.ship||0)+N(c.callerC||0)+N(c.totalC||0)+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos");
+    if(id==="shopee")    return per+N(n(d.revenue))+N(n(d.cancel))+N(c.pf||0)+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos")+ord;
+    if(id==="jemuay")    return per+N(n(d.revenue))+N(n(d.cancel))+N(c.gp||0)+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos")+ord;
+    if(id==="clinic")    return per+N(n(d.revenue))+N(n(d.cancel))+N(n(d.returnAmt))+N(n(d.shipping))+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.marketingFee))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos")+ord;
+    if(id==="marketing") return per+N(n(d.revenue))+ord+N(n(d.branch1))+N(n(d.branch2))+N(n(d.branch3))+N(n(d.branch4))+N(n(d.influencerComm))+N(n(d.adsNormal))+N(n(d.packing))+N(c.cogs)+NC(c.net,neg(c.net)?"neg":"pos");
+    return per+N(n(d.revenue))+N(c.cogs)+N(c.exp)+NC(c.net,neg(c.net)?"neg":"pos");
+  }
+
+  function chTotals(id,periodRows,chRev,chNet,chCogs,chOrders){
+    const N=v=>`<td class="num-col">${fmtB(v)}</td>`;
+    const NC=(v,cls)=>`<td class="num-col ${cls||""}">${fmtB(v)}</td>`;
+    const sum=k=>periodRows.reduce((s,{d})=>s+n(d[k]),0);
+    const sumc=k=>periodRows.reduce((s,{c})=>s+(c[k]||0),0);
+    const ord=`<td class="num-col">${fmtInt(chOrders)}</td>`;
+    const net=NC(chNet,chNet>=0?"pos":"neg");
+    const per=`<td class="period-col" style="color:#f5c842">รวมทั้งเดือน</td>`;
+    if(id==="tiktok")    return per+N(chRev)+N(sum("cancel"))+N(sum("returnAmt"))+N(sum("platformFee"))+N(sum("influencerWage"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("adsLive"))+N(sum("packing"))+N(chCogs)+net+ord;
+    if(id==="facebook"||id==="line") return per+N(chRev)+ord+N(sumc("ship"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("packing"))+N(chCogs)+net;
+    if(id==="agent")     return per+N(chRev)+N(sum("cancel"))+N(sum("shipping"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("packing"))+N(chCogs)+net+ord;
+    if(id==="telesale")  return per+N(chRev)+ord+N(sumc("ship"))+N(sumc("callerC"))+N(sumc("totalC"))+N(sum("packing"))+N(chCogs)+net;
+    if(id==="shopee")    return per+N(chRev)+N(sum("cancel"))+N(sumc("pf"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("packing"))+N(chCogs)+net+ord;
+    if(id==="jemuay")    return per+N(chRev)+N(sum("cancel"))+N(sumc("gp"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("packing"))+N(chCogs)+net+ord;
+    if(id==="clinic")    return per+N(chRev)+N(sum("cancel"))+N(sum("returnAmt"))+N(sum("shipping"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("marketingFee"))+N(sum("packing"))+N(chCogs)+net+ord;
+    if(id==="marketing") return per+N(chRev)+ord+N(sum("branch1"))+N(sum("branch2"))+N(sum("branch3"))+N(sum("branch4"))+N(sum("influencerComm"))+N(sum("adsNormal"))+N(sum("packing"))+N(chCogs)+net;
+    return per+N(chRev)+N(chCogs)+`<td class="num-col">${fmtB(periodRows.reduce((s,{c})=>s+(c.exp||0),0))}</td>`+net;
+  }
+
+  const channelDetailPages=rows.map(({ch,chRev,chNet,chOrders,chExp,chCogs,periodRows})=>{
+    const color=chColors[ch.id]||"#888";
+    const gp=chRev-chCogs;
+    const gpPct=chRev>0?((gp/chRev)*100).toFixed(1)+"%":"—";
+
+    // Product COGS breakdown
+    const prodMap={};
+    periodRows.forEach(({d})=>{
+      (d.products||[]).forEach(p=>{
+        if(!prodMap[p.name])prodMap[p.name]={cost:p.cost,qty:0,total:0};
+        const q=n(p.qty);
+        prodMap[p.name].qty+=q;
+        prodMap[p.name].total+=n(p.cost)*q;
+      });
+    });
+    const prodRows=Object.entries(prodMap).filter(([,v])=>v.qty>0).sort((a,b)=>b[1].total-a[1].total);
+
+    // Telesale staff
+    let staffSection="";
+    if(ch.id==="telesale"){
+      const staff=[{n:"เมย์",k:"may"},{n:"กิ๊ก",k:"gig"},{n:"ไอริน",k:"irin"},{n:"อิง",k:"ing"}];
+      const staffTots=staff.map(({n:nm,k})=>{
+        let calls=0,closes=0;
+        periodRows.forEach(({d})=>{calls+=n(d[k+"_calls"]);closes+=n(d[k+"_closes"]);});
+        return{nm,calls,closes,rate:calls>0?((closes/calls)*100).toFixed(1):0};
+      }).filter(s=>s.calls>0);
+      if(staffTots.length>0){
+        const totalCalls=staffTots.reduce((s,x)=>s+x.calls,0);
+        const totalCloses=staffTots.reduce((s,x)=>s+x.closes,0);
+        staffSection=`
+        <div class="cpg-section">
+          <div class="cpg-section-head">👥 ผลงาน Telesale รายบุคคล (รวมทั้งเดือน)</div>
+          <table class="detail-table">
+            <thead><tr><th style="text-align:left">พนักงาน</th><th>สายรวม</th><th>ปิดได้</th><th>อัตราปิด</th><th>% ของทีม</th></tr></thead>
+            <tbody>
+              ${staffTots.map(s=>`<tr>
+                <td class="period-col">${s.nm}</td>
+                <td class="num-col">${s.calls}</td>
+                <td class="num-col pos">${s.closes}</td>
+                <td class="pct-col" style="color:#c084fc">${s.rate}%</td>
+                <td class="pct-col">${totalCalls>0?((s.calls/totalCalls)*100).toFixed(0):0}%</td>
+              </tr>`).join("")}
+              <tr style="color:#f5c842;font-weight:700;background:#131928">
+                <td class="period-col">รวมทีม</td>
+                <td class="num-col">${totalCalls}</td>
+                <td class="num-col pos">${totalCloses}</td>
+                <td class="pct-col" style="color:#c084fc">${totalCalls>0?((totalCloses/totalCalls)*100).toFixed(1):0}%</td>
+                <td class="pct-col">100%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+      }
+    }
+
+    // Marketing branch breakdown
+    let branchSection="";
+    if(ch.id==="marketing"){
+      const branches=[{n:"เชฟวัน",k:"branch1"},{n:"สวายเรียง",k:"branch2"},{n:"ประทาย",k:"branch3"},{n:"พยัค",k:"branch4"}];
+      const bTots=branches.map(({n:nm,k})=>({nm,total:periodRows.reduce((s,{d})=>s+n(d[k]),0)})).filter(b=>b.total>0);
+      if(bTots.length>0){
+        const maxB=Math.max(...bTots.map(b=>b.total));
+        branchSection=`
+        <div class="cpg-section">
+          <div class="cpg-section-head">📍 สัดส่วนรายได้แยกสาขา</div>
+          <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:12px;padding:16px">
+            ${bTots.map(b=>`
+            <div style="background:#131928;border-radius:10px;padding:16px">
+              <div style="font-size:11px;color:#8b9ab5;font-weight:700;margin-bottom:6px;text-transform:uppercase;letter-spacing:1px">${b.nm}</div>
+              <div style="font-size:22px;font-weight:800;color:#a3e635;font-family:'JetBrains Mono',monospace">${fmtB(b.total)}</div>
+              <div style="font-size:10px;color:#4a5568;margin-top:4px">${pR(b.total,chRev)} ของรายได้ช่องทาง</div>
+              <div style="margin-top:10px;height:4px;background:#1e2d45;border-radius:2px;overflow:hidden">
+                <div style="width:${maxB>0?Math.round(b.total/maxB*100):0}%;height:100%;background:#a3e635;border-radius:2px"></div>
+              </div>
+            </div>`).join("")}
+          </div>
+        </div>`;
+      }
+    }
+
+    // TikTok revenue breakdown
+    let extraBreakdown="";
+    const bfFields=[
+      {id:"tiktok",fields:[{k:"shopCard",l:"หน้าร้าน (การ์ด)"},{k:"live",l:"Live"},{k:"companyAcc",l:"บัญชีบริษัท"},{k:"partTime",l:"Part-time"},{k:"affAcc",l:"บัญชี Aff"},{k:"vdoCompany",l:"VDO บ.บริษัท"},{k:"vdoAff",l:"VDO Aff"}]},
+      {id:"clinic",fields:[{k:"shopCard",l:"หน้าร้านค้า"},{k:"live",l:"Live"},{k:"companyAcc",l:"บัญชีบริษัท"},{k:"partTime",l:"Part-time"},{k:"affAcc",l:"บัญชี Aff"},{k:"vdoCompany",l:"VDO บ.บริษัท"}]},
+    ];
+    const bfMatch=bfFields.find(x=>x.id===ch.id);
+    if(bfMatch){
+      const bfTots=bfMatch.fields.map(({k,l})=>({l,total:periodRows.reduce((s,{d})=>s+n(d[k]),0)})).filter(b=>b.total>0);
+      if(bfTots.length>0){
+        const maxBf=Math.max(...bfTots.map(b=>b.total));
+        extraBreakdown=`
+        <div class="cpg-section">
+          <div class="cpg-section-head">📊 สัดส่วนรายได้แยกแหล่งที่มา</div>
+          <div style="padding:16px">
+            ${bfTots.map(b=>`
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+              <div style="font-size:12px;font-weight:700;width:150px;flex-shrink:0;color:#e8edf5">${b.l}</div>
+              <div style="flex:1;height:8px;background:#1e2d45;border-radius:4px;overflow:hidden">
+                <div style="width:${maxBf>0?Math.round(b.total/maxBf*100):0}%;height:100%;background:${color};border-radius:4px;opacity:0.85"></div>
+              </div>
+              <div style="font-family:'JetBrains Mono',monospace;font-size:12px;color:#8b9ab5;width:90px;text-align:right">${fmtB(b.total)}</div>
+              <div style="font-size:11px;color:#4da8ff;width:50px;text-align:right">${pR(b.total,chRev)}</div>
+            </div>`).join("")}
+          </div>
+        </div>`;
+      }
+    }
+
+    // Bar chart script
+    const cid="bar_"+ch.id;
+    const pLabels=periodRows.map(({p})=>p);
+    const pRevs=periodRows.map(({d})=>n(d.revenue));
+    const pNets=periodRows.map(({c})=>c.net||0);
+    const pExps=periodRows.map(({c})=>c.exp||0);
+    const pCogs=periodRows.map(({c})=>c.cogs||0);
+
+    allBarChartScripts+=`
+(function(){
+  const cv=document.getElementById('${cid}');
+  if(!cv)return;
+  const ctx=cv.getContext('2d');
+  const labels=${JSON.stringify(pLabels)};
+  const revs=${JSON.stringify(pRevs)};
+  const exps=${JSON.stringify(pExps)};
+  const nets=${JSON.stringify(pNets)};
+  const cogs=${JSON.stringify(pCogs)};
+  const W=cv.offsetWidth||900,H=220;
+  cv.width=W;cv.height=H;
+  const pad={top:24,right:20,bottom:48,left:72};
+  const cW=W-pad.left-pad.right,cH=H-pad.top-pad.bottom;
+  const allPos=[...revs,...exps,...nets.map(v=>Math.max(v,0)),...cogs];
+  const allNeg=nets.filter(v=>v<0).map(v=>Math.abs(v));
+  const maxV=Math.max(...allPos,1);
+  const maxN=Math.max(...allNeg,0);
+  const posH=allNeg.length>0?cH*0.75:cH;
+  const negH=cH-posH;
+  const zero=pad.top+posH;
+  const barsPerGroup=3;
+  const groupW=cW/Math.max(labels.length,1);
+  const totalBarW=groupW*0.72;
+  const bw=totalBarW/barsPerGroup;
+  const colors=['rgba(77,168,255,0.85)','rgba(251,146,60,0.85)','rgba(45,219,138,0.85)','rgba(255,77,106,0.85)'];
+
+  ctx.fillStyle='#080d18';ctx.fillRect(0,0,W,H);
+  // Grid lines
+  for(let i=0;i<=4;i++){
+    const y=pad.top+posH*(1-i/4);
+    ctx.strokeStyle='#1a2234';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(pad.left,y);ctx.lineTo(pad.left+cW,y);ctx.stroke();
+    const val=maxV*i/4;
+    ctx.fillStyle='#4a5568';ctx.font='10px JetBrains Mono';ctx.textAlign='right';
+    ctx.fillText(val>=1000?(val/1000).toFixed(0)+"k":val.toFixed(0),pad.left-5,y+4);
+  }
+  // Zero line
+  ctx.strokeStyle='#2a3f5c';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(pad.left,zero);ctx.lineTo(pad.left+cW,zero);ctx.stroke();
+
+  labels.forEach((lbl,i)=>{
+    const gx=pad.left+i*groupW+(groupW-totalBarW)/2;
+    // Revenue
+    const rh=posH*(revs[i]/maxV);
+    ctx.fillStyle=colors[0];ctx.beginPath();ctx.roundRect(gx,zero-rh,bw-2,rh,2);ctx.fill();
+    // Expense
+    const eh=posH*(exps[i]/maxV);
+    ctx.fillStyle=colors[1];ctx.beginPath();ctx.roundRect(gx+bw,zero-eh,bw-2,eh,2);ctx.fill();
+    // Net
+    const nv=nets[i];
+    if(nv>=0){
+      const nh=posH*(nv/maxV);
+      ctx.fillStyle=colors[2];ctx.beginPath();ctx.roundRect(gx+bw*2,zero-nh,bw-2,nh,2);ctx.fill();
+    } else {
+      const nh=negH*(Math.abs(nv)/Math.max(maxN,1));
+      ctx.fillStyle=colors[3];ctx.beginPath();ctx.roundRect(gx+bw*2,zero,bw-2,Math.min(nh,negH),2);ctx.fill();
+    }
+    // Label
+    ctx.fillStyle='#8b9ab5';ctx.font='11px Sarabun';ctx.textAlign='center';
+    ctx.fillText(lbl,gx+totalBarW/2,H-6);
+  });
+  // Legend
+  const leg=[{c:colors[0],l:'รายได้'},{c:colors[1],l:'ค่าใช้จ่าย'},{c:colors[2],l:'สุทธิ+'}];
+  let lx=pad.left;
+  leg.forEach(({c:lc,l:ll})=>{
+    ctx.fillStyle=lc;ctx.fillRect(lx,8,10,10);
+    ctx.fillStyle='#8b9ab5';ctx.font='11px Sarabun';ctx.textAlign='left';
+    ctx.fillText(ll,lx+14,18);lx+=80;
+  });
+})();`;
+
+    const headers=chHeaders(ch.id);
+
+    return `
+<div class="cpg-page" id="cpg-${ch.id}">
+  <div class="cpg-header" style="background:linear-gradient(135deg,rgba(${parseInt(color.slice(1,3),16)},${parseInt(color.slice(3,5),16)},${parseInt(color.slice(5,7),16)},0.12),#080d18);border-left:6px solid ${color}">
+    <div>
+      <div class="cpg-title" style="color:${color}">${ch.label}</div>
+      <div class="cpg-sub">รายงานแยกช่องทาง — ${monthName}</div>
+    </div>
+    <div class="cpg-badge" style="background:rgba(${parseInt(color.slice(1,3),16)},${parseInt(color.slice(3,5),16)},${parseInt(color.slice(5,7),16)},0.15);color:${color};border-color:${color}">${pR(chRev,totalRev)} ของรายได้รวม</div>
+  </div>
+
+  <div class="cpg-kpi">
+    <div class="ck"><div class="ck-l">รายได้ทั้งหมด</div><div class="ck-v" style="color:#4da8ff">${fmtB(chRev)}</div><div class="ck-s">บาท</div></div>
+    <div class="ck"><div class="ck-l">COGS</div><div class="ck-v" style="color:#f5c842">${fmtB(chCogs)}</div><div class="ck-s">${pR(chCogs,chRev)} ของรายได้</div></div>
+    <div class="ck"><div class="ck-l">ค่าใช้จ่ายรวม</div><div class="ck-v" style="color:#fb923c">${fmtB(chExp)}</div><div class="ck-s">${pR(chExp,chRev)} ของรายได้</div></div>
+    <div class="ck"><div class="ck-l">Gross Profit</div><div class="ck-v" style="color:#a78bfa">${fmtB(gp)}</div><div class="ck-s">${gpPct} GP margin</div></div>
+    <div class="ck"><div class="ck-l">รายได้สุทธิ</div><div class="ck-v" style="color:${chNet>=0?"#2ddb8a":"#ff4d6a"}">${fmtB(chNet)}</div><div class="ck-s">${pR(chNet,chRev)} Net margin</div></div>
+    <div class="ck"><div class="ck-l">ออเดอร์รวม</div><div class="ck-v" style="color:#c084fc">${fmtInt(chOrders)}</div><div class="ck-s">${chOrders>0?fmtB(chRev/chOrders)+" บาท/ออเดอร์":"—"}</div></div>
+  </div>
+
+  ${periodRows.length>0?`
+  <div class="cpg-section">
+    <div class="cpg-section-head">📊 กราฟรายได้ / ค่าใช้จ่าย / สุทธิ แต่ละช่วงเวลา</div>
+    <div style="padding:16px 16px 8px"><canvas id="${cid}" style="width:100%;display:block"></canvas></div>
+  </div>`:""}
+
+  <div class="cpg-section">
+    <div class="cpg-section-head">📋 รายละเอียดค่าใช้จ่ายแต่ละช่วง</div>
+    ${periodRows.length?`
+    <div style="overflow-x:auto">
+    <table class="detail-table">
+      <thead><tr>${headers.map(h=>`<th${h==="ช่วงวันที่"?' style="text-align:left"':''}>${h}</th>`).join("")}</tr></thead>
+      <tbody>${periodRows.map(({p,d,c})=>`<tr>${chCells(ch.id,p,d,c)}</tr>`).join("")}</tbody>
+      <tfoot><tr style="background:#131928">${chTotals(ch.id,periodRows,chRev,chNet,chCogs,chOrders)}</tr></tfoot>
+    </table>
+    </div>`:`<p class="no-data">ยังไม่มีข้อมูล</p>`}
+  </div>
+
+  ${extraBreakdown}
+  ${staffSection}
+  ${branchSection}
+
+  ${prodRows.length>0?`
+  <div class="cpg-section">
+    <div class="cpg-section-head">📦 ต้นทุนสินค้า (COGS) แยกรายการสินค้า</div>
+    <div style="overflow-x:auto">
+    <table class="detail-table">
+      <thead><tr>
+        <th style="text-align:left">ชื่อสินค้า</th><th>ต้นทุน/ชิ้น</th><th>จำนวนรวม</th><th>ต้นทุนรวม</th><th>% ของ COGS</th>
+      </tr></thead>
+      <tbody>
+        ${prodRows.map(([nm,{cost,qty,total}])=>`
+        <tr>
+          <td class="period-col">${nm}</td>
+          <td class="num-col">${fmtBF(cost)}</td>
+          <td class="num-col">${fmtInt(qty)}</td>
+          <td class="num-col" style="color:#f5c842">${fmtB(total)}</td>
+          <td class="pct-col">${pR(total,chCogs)}</td>
+        </tr>`).join("")}
+      </tbody>
+      <tfoot><tr style="color:#f5c842;font-weight:700;background:#131928">
+        <td class="period-col">รวม COGS</td>
+        <td class="num-col">—</td>
+        <td class="num-col">${fmtInt(prodRows.reduce((s,[,v])=>s+v.qty,0))}</td>
+        <td class="num-col">${fmtB(chCogs)}</td>
+        <td class="pct-col">100%</td>
+      </tr></tfoot>
+    </table>
+    </div>
+  </div>`:""}
+</div>`;
+  }).join("");
+
+  // ── Donut chart (page 1) ───────────────────────────────────────────────────
   const chartData=rows.map(r=>({label:r.ch.label,value:r.chRev,color:chColors[r.ch.id]}));
   const chartJs=`
     const data=${JSON.stringify(chartData)};
@@ -1131,27 +1447,29 @@ function downloadReport(){
     ctx.fillText(total.toLocaleString('th-TH',{maximumFractionDigits:0}),cx,cy+12);
   `;
 
-  const monthName=MONTHS[activeMonth-1].full+" "+YEAR;
-const html=`<!DOCTYPE html>
+  // ── Nav buttons ────────────────────────────────────────────────────────────
+  const navBtns=rows.map(({ch})=>`
+    <button class="chnav-btn" onclick="document.getElementById('cpg-${ch.id}').scrollIntoView({behavior:'smooth'})"
+      style="border-color:${chColors[ch.id]};color:${chColors[ch.id]}">${ch.label}</button>`).join("");
+
+  const html=`<!DOCTYPE html>
 <html lang="th"><head>
 <meta charset="UTF-8">
 <title>Sales Report ${monthName}</title>
 <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
   *{box-sizing:border-box;margin:0;padding:0;}
-  body{background:#07080f;color:#e8edf5;font-family:'Sarabun',sans-serif;font-size:14px;padding:0;}
-  @media print{body{background:#fff;color:#111;} .no-print{display:none!important;} .ch-section{break-inside:avoid;}}
+  body{background:#07080f;color:#e8edf5;font-family:'Sarabun',sans-serif;font-size:14px;}
+  @media print{.no-print{display:none!important;}.cpg-page{page-break-before:always;}.summary-wrap{page-break-after:always;}}
 
-  /* SUMMARY CARDS */
+  /* PAGE 1 — SUMMARY */
   .summary-wrap{max-width:1100px;margin:0 auto;padding:30px 24px 10px;}
   .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:24px;}
   .kpi{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;padding:18px;}
   .kpi .kl{font-size:10px;color:#4a5568;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
   .kpi .kv{font-size:22px;font-weight:800;font-family:'JetBrains Mono',monospace;}
   .kpi .ks{font-size:11px;color:#4a5568;margin-top:4px;}
-  @media(max-width:700px){.kpi-grid{grid-template-columns:1fr 1fr;}}
-
-  /* CHART SECTION */
+  @media(max-width:700px){.kpi-grid{grid-template-columns:1fr 1fr;}.cpg-kpi{grid-template-columns:1fr 1fr!important;}}
   .chart-area{display:flex;gap:24px;margin-bottom:24px;align-items:flex-start;flex-wrap:wrap;}
   .chart-box{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;padding:20px;flex:0 0 auto;}
   .chart-title{font-size:11px;font-weight:700;color:#4a5568;letter-spacing:1px;text-transform:uppercase;margin-bottom:14px;}
@@ -1164,75 +1482,83 @@ const html=`<!DOCTYPE html>
   .bar-mini{flex:0 0 60px;height:6px;background:#1e2d45;border-radius:3px;overflow:hidden;}
   .bar-mini-fill{height:100%;border-radius:3px;}
 
-  /* CHANNEL SECTIONS */
-  .ch-section{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;
-    margin-bottom:16px;overflow:hidden;}
-  .ch-header{display:flex;justify-content:space-between;align-items:center;
-    padding:14px 20px;background:#080d18;gap:12px;flex-wrap:wrap;}
+  /* SUMMARY CHANNEL SECTIONS */
+  .ch-section{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;margin-bottom:16px;overflow:hidden;}
+  .ch-header{display:flex;justify-content:space-between;align-items:center;padding:14px 20px;background:#080d18;gap:12px;flex-wrap:wrap;}
   .ch-name{font-size:16px;font-weight:800;margin-right:10px;}
   .ch-share{font-size:11px;color:#4a5568;background:#131928;padding:3px 10px;border-radius:20px;}
   .ch-nums{display:flex;gap:16px;font-size:12px;color:#8b9ab5;flex-wrap:wrap;}
   .ch-nums b{color:#e8edf5;}
+
+  /* SHARED TABLE */
   .detail-table{width:100%;border-collapse:collapse;font-size:12px;}
-  .detail-table th{padding:10px 12px;font-size:10px;color:#4a5568;font-weight:700;
-    border-bottom:1px solid #1e2d45;text-align:right;letter-spacing:.5px;text-transform:uppercase;}
+  .detail-table th{padding:10px 12px;font-size:10px;color:#4a5568;font-weight:700;border-bottom:1px solid #1e2d45;text-align:right;letter-spacing:.5px;text-transform:uppercase;}
   .detail-table th:first-child{text-align:left;}
   .detail-table td{padding:9px 12px;border-bottom:1px solid #131928;text-align:right;}
   .detail-table tr:last-child td{border-bottom:none;}
-  .detail-table tr:hover{background:#131928;}
+  .detail-table tr:hover{background:#0f1520;}
+  .detail-table tfoot td{border-top:1.5px solid #2a3f5c;border-bottom:none;}
   .period-col{text-align:left!important;font-weight:700;color:#e8edf5;}
   .num-col{font-family:'JetBrains Mono',monospace;color:#8b9ab5;}
   .pct-col{font-family:'JetBrains Mono',monospace;color:#4da8ff;font-size:11px;}
   .ads-col{color:#f5c842!important;}
   .pos{color:#2ddb8a!important;}
   .neg{color:#ff4d6a!important;}
-  .no-data{padding:20px;text-align:center;color:#4a5568;font-size:12px;}
+  .no-data{padding:24px;text-align:center;color:#4a5568;font-size:12px;}
 
-  /* PRINT BUTTON */
-  .print-bar{background:#050810;border-bottom:1px solid #1e2d45;padding:12px 24px;
-    display:flex;gap:10px;align-items:center;}
+  /* PRINT BAR */
+  .print-bar{background:#050810;border-bottom:1px solid #1e2d45;padding:12px 24px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
   .pbtn{padding:8px 18px;border-radius:8px;font-size:13px;font-weight:700;border:none;cursor:pointer;font-family:'Sarabun',sans-serif;}
   .pbtn-print{background:linear-gradient(135deg,#1a1040,#2d1060);color:#c084fc;border:1.5px solid #5b21b6;}
   .pbtn-back{background:#131928;color:#8b9ab5;border:1.5px solid #1e2d45;}
-  .section-label{font-size:11px;color:#4a5568;letter-spacing:2px;text-transform:uppercase;
-    margin:24px 0 12px;font-weight:700;}
+  .section-label{font-size:11px;color:#4a5568;letter-spacing:2px;text-transform:uppercase;margin:24px 0 12px;font-weight:700;}
   .footer{text-align:center;padding:30px;color:#2a3f5c;font-size:11px;border-top:1px solid #1e2d45;margin-top:20px;}
+
+  /* CHANNEL NAV */
+  .ch-nav{background:#030508;border-bottom:1px solid #0e1825;padding:10px 20px;display:flex;gap:8px;flex-wrap:wrap;position:sticky;top:0;z-index:200;}
+  .ch-nav-label{font-size:11px;color:#4a5568;font-weight:700;letter-spacing:1px;text-transform:uppercase;align-self:center;margin-right:4px;white-space:nowrap;}
+  .chnav-btn{padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;border:1.5px solid;cursor:pointer;background:transparent;font-family:'Sarabun',sans-serif;transition:all .15s;}
+  .chnav-btn:hover{opacity:.75;}
+  .chnav-home{background:#131928;color:#8b9ab5;border-color:#1e2d45;padding:5px 14px;border-radius:6px;font-size:12px;font-weight:700;border:1.5px solid #1e2d45;cursor:pointer;font-family:'Sarabun',sans-serif;}
+
+  /* CHANNEL DETAIL PAGE */
+  .cpg-page{max-width:1100px;margin:0 auto;padding:24px 24px 48px;border-top:2px dashed #1a2234;}
+  .cpg-header{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;border-radius:14px;margin-bottom:20px;flex-wrap:wrap;gap:12px;}
+  .cpg-title{font-size:26px;font-weight:800;letter-spacing:1px;}
+  .cpg-sub{font-size:12px;color:#8b9ab5;margin-top:4px;}
+  .cpg-badge{font-size:11px;font-weight:700;padding:5px 14px;border-radius:20px;border:1.5px solid;letter-spacing:.5px;}
+  .cpg-kpi{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px;}
+  @media(max-width:640px){.cpg-kpi{grid-template-columns:1fr 1fr;}}
+  .ck{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;padding:16px 18px;}
+  .ck-l{font-size:10px;color:#4a5568;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px;}
+  .ck-v{font-size:20px;font-weight:800;font-family:'JetBrains Mono',monospace;}
+  .ck-s{font-size:10px;color:#4a5568;margin-top:4px;}
+  .cpg-section{background:#0d1120;border:1.5px solid #1e2d45;border-radius:12px;margin-bottom:16px;overflow:hidden;}
+  .cpg-section-head{padding:12px 18px;background:#080d18;border-bottom:1px solid #1e2d45;font-size:11px;font-weight:700;color:#8b9ab5;letter-spacing:1.5px;text-transform:uppercase;}
 </style>
 </head>
 <body>
+
 <div class="print-bar no-print">
   <button class="pbtn pbtn-print" onclick="window.print()">🖨 พิมพ์ / Save PDF</button>
   <button class="pbtn pbtn-back" onclick="window.close()">✕ ปิด</button>
 </div>
 
-
+<div class="ch-nav no-print">
+  <span class="ch-nav-label">ไปที่:</span>
+  <button class="chnav-home" onclick="window.scrollTo({top:0,behavior:'smooth'})">📊 สรุปภาพรวม</button>
+  ${navBtns}
+</div>
 
 <div class="summary-wrap">
   <div class="section-label" style="font-size:15px;color:#e8edf5;letter-spacing:1px">📊 รายงานรายได้และค่าใช้จ่าย — ${monthName}</div>
-  <div class="section-label" style="margin-top:0">สรุปภาพรวม</div>
+  <div class="section-label" style="margin-top:0">หน้า 1 — สรุปภาพรวมทุกช่องทาง</div>
   <div class="kpi-grid">
-    <div class="kpi">
-      <div class="kl">รายได้รวมทุกช่องทาง</div>
-      <div class="kv" style="color:#4da8ff">${fmtB(totalRev)}</div>
-      <div class="ks">บาท</div>
-    </div>
-    <div class="kpi">
-      <div class="kl">รายได้สุทธิรวม</div>
-      <div class="kv" style="color:${neg(totalNet)?"#ff4d6a":"#2ddb8a"}">${fmtB(totalNet)}</div>
-      <div class="ks">Net margin ${pR(totalNet,totalRev)}</div>
-    </div>
-    <div class="kpi">
-      <div class="kl">ออเดอร์รวม</div>
-      <div class="kv" style="color:#c084fc">${fmtInt(totalOrders)}</div>
-      <div class="ks">ออเดอร์ ทุกช่องทาง</div>
-    </div>
-    <div class="kpi">
-      <div class="kl">จำนวนช่องทาง</div>
-      <div class="kv" style="color:#f5c842">${rows.length}</div>
-      <div class="ks">ช่องทางที่มีข้อมูล</div>
-    </div>
+    <div class="kpi"><div class="kl">รายได้รวมทุกช่องทาง</div><div class="kv" style="color:#4da8ff">${fmtB(totalRev)}</div><div class="ks">บาท</div></div>
+    <div class="kpi"><div class="kl">รายได้สุทธิรวม</div><div class="kv" style="color:${neg(totalNet)?"#ff4d6a":"#2ddb8a"}">${fmtB(totalNet)}</div><div class="ks">Net margin ${pR(totalNet,totalRev)}</div></div>
+    <div class="kpi"><div class="kl">ออเดอร์รวม</div><div class="kv" style="color:#c084fc">${fmtInt(totalOrders)}</div><div class="ks">ออเดอร์ ทุกช่องทาง</div></div>
+    <div class="kpi"><div class="kl">จำนวนช่องทาง</div><div class="kv" style="color:#f5c842">${rows.length}</div><div class="ks">ช่องทางที่มีข้อมูล</div></div>
   </div>
-
   <div class="chart-area">
     <div class="chart-box">
       <div class="chart-title">สัดส่วนรายได้แต่ละช่องทาง</div>
@@ -1244,24 +1570,25 @@ const html=`<!DOCTYPE html>
         <div class="legend-row">
           <div class="legend-dot" style="background:${chColors[r.ch.id]}"></div>
           <span class="legend-name">${r.ch.label}</span>
-          <div class="bar-mini"><div class="bar-mini-fill" style="width:${totalRev>0?(r.chRev/totalRev*100).toFixed(0):0}%;background:${chColors[r.ch.id]}"></div></div>
+          <div class="bar-mini"><div class="bar-mini-fill" style="width:${totalRev>0?Math.round(r.chRev/totalRev*100):0}%;background:${chColors[r.ch.id]}"></div></div>
           <span class="legend-val">${fmtB(r.chRev)}</span>
           <span class="legend-pct">${pR(r.chRev,totalRev)}</span>
         </div>`).join("")}
     </div>
   </div>
-
-  <div class="section-label">📋 รายละเอียดรายช่องทาง</div>
+  <div class="section-label">📋 ตารางสรุปรายช่องทาง</div>
   ${detailSections}
-
   <div class="footer">
     Sales Tracker Report &nbsp;•&nbsp; สร้างอัตโนมัติจากข้อมูลในระบบ &nbsp;•&nbsp;
     ${new Date().toLocaleDateString("th-TH",{year:"numeric",month:"long",day:"numeric",hour:"2-digit",minute:"2-digit"})}
   </div>
 </div>
 
+${channelDetailPages}
+
 <script>
 (function(){${chartJs}})();
+${allBarChartScripts}
 <\/script>
 </body></html>`;
 
